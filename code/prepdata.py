@@ -378,20 +378,20 @@ class EntsoePower:
     
     """
     
-    def __init__(self, country_code, startdatetime, enddatetime, 
+    def __init__(self, country_code, startdate, enddate, 
                  loginfile='../userdata/logins.txt'):
         """
         Args
         ----------
         datatype: string
             
-        startdatetime : string or datenum
-            first datetime of the period to be pulled
-            format: yyyyMMddHHmm
+        startdate : string 
+            date of the first day of the period to be pulled
+            format: 'YYYY-MM-DD'
     
-        enddatetime : string or datenum
-            first datetime of the period to be pulled
-            format: yyyyMMddHHmm
+        enddatetime : string 
+            date of the last date of the period to be pulled
+            format: 'YYYY-MM-DD'
         country :string
            two letter iso country code.
         loginfile : string
@@ -404,8 +404,8 @@ class EntsoePower:
                     
         """  
 
-        self.startdatetime=startdatetime
-        self.enddatetime=enddatetime
+        self.startdatetime=f'{startdate}T00:00'
+        self.enddatetime=f'{enddate}T23:45'
         self.country_code=country_code     
         self.loginfile=loginfile
         self.entsoe_key=read_login(self.loginfile, 'entsoe')
