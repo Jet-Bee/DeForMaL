@@ -1,0 +1,3 @@
+entsoe-py  #API for ENTSOE european power data
+cdsapi     #API for ERA5 weather reanalysis data
+ecmwf-opendata #API for ECWMF weather forecasts
