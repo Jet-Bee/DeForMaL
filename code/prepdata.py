@@ -50,6 +50,12 @@ Power demand: https://transparency.entsoe.eu
 holidays:https://www.openholidaysapi.org/en/
 """
 
+__author__     = "Jethro Betcke"
+__copyright__  = "Copyright 2024, Jethro Betcke"
+__version__    = "0.01"
+__maintainer__ = "Jethro Betcke"
+
+
 # TODO add class to pull weather data (openweather/ECMWF/ERA5)
 # TODO holidays: select only national holidays, or make an option for this
 # TODO holidays: workaround to deal with the maximum of 3 years of data 

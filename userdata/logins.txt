@@ -1,0 +1,5 @@
+# save your logindata here
+# follow the format <abbreviation datasource> <key>
+# 
+# to get an access key for power data from ENTSOE-E, register for free at: https://transparency.entsoe.eu/
+entsoe fill_in_your_key
