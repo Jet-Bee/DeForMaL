@@ -1,3 +1,7 @@
 entsoe-py  #API for ENTSOE european power data
 cdsapi     #API for ERA5 weather reanalysis data
 ecmwf-opendata #API for ECWMF weather forecasts
+pandas>=2.2 # pandas 2.1.4 has a problem with timezones
+numpy
+tensorflow
+sklearn
