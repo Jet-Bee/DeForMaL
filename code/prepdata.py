@@ -408,7 +408,6 @@ class EntsoePower:
         self.country_code  = country_code     
         self.loginfile     = loginfile
         self.entsoe_key    = read_login(self.loginfile, 'entsoe')
-        self.data_15_min   = None
         self.time_zone     = country_timezone[self.country_code]
         
     def pull_process_save(self,filename):
@@ -418,6 +417,16 @@ class EntsoePower:
                 - averaging it to 1h resolution
                 - split the data in forecast and actual
                 - save the results to csv
+                
+            File Output:
+            ------------
+            <filename>: 
+                csv file with hourly forecasted and actual load
+            <filenamebase>_forecast<extension>: 
+                csv file with hourly forecasted load
+            <filenamebase>_actual<extension>: 
+                csv file with hourly actual load                
+                                               
             
             """
             self.pull_all()
@@ -427,8 +436,8 @@ class EntsoePower:
             self.split()
             
             filebase,extension = os.path.splitext(filename)
-            self.forecasted_load_hr.to_csv(f'{filebase}_forecast_{extension}')
-            self.actual_load_hr.to_csv(f'{filebase}_actual_{extension}')  
+            self.forecasted_load_hr.to_csv(f'{filebase}_forecast{extension}')
+            self.actual_load_hr.to_csv(f'{filebase}_actual{extension}')  
             
                           
     
@@ -438,6 +447,18 @@ class EntsoePower:
         entsoe API, both have an original resolution of 15 minutes
         
         The timesytem is set to the local time system.
+        
+        Uses Attributes:
+        -------
+        startdatetime, enddatetime, time_zone, entsoe_key 
+           
+        Creates Attribute:
+        --------    
+        data_raw: pandas dataframe
+           dateframe with datetime index in local time, with 15 minute 
+           resolution, and columns 'Forecasted_Load' and 'Actual_Load' (MW)
+           Load data is averaged over the 15 minute period
+           the timestamp indicates the start of the averaging interval
 
         """
         
@@ -463,6 +484,19 @@ class EntsoePower:
         Returns
         -------
         None.
+        
+        Uses Attributes:
+        -------    
+        data_raw, pandas dataframe
+            original 15 minute load data, see pull_all()
+        
+        Creates Attribute:  
+        -------    
+        data_hr, pandas dataframe
+           dateframe with datetime index in local time, with one hour 
+           resolution, and columns 'Forecasted_Load' and 'Actual_Load' (MW)
+           Load data is averaged over the 60 minute interval
+           the timestamp indicates the start of the averaging interval
 
         """
         
@@ -473,7 +507,7 @@ class EntsoePower:
         """
         
         splits the hourly data in two dataframes
-        one for the forecast, and one for the measured values. 
+        one for the forecast, and one for the actual load values. 
         
         The forecast can possible be used as additional input into the
         Machine learning model, so it must be seperated from the actual
@@ -482,6 +516,18 @@ class EntsoePower:
         Returns
         -------
         None.
+        
+        Uses Attributes:
+        --------   
+        data_hr, pandas dataframe
+            hourly load data, see to_hourly()       
+        
+        Creates Attributes:
+        --------    
+        forecasted_load_hr, pandas dataframe
+            hourly forecasted load
+        actual_load_hr
+            hourly actual load
 
         """
         
@@ -528,7 +574,33 @@ class OpenHolidays:
         
     def pull_process_save(self,groupmethod, filename='../data/holidays.csv'):
         """
-        one stop shop to do everything
+
+        one stop shop to:
+            - pull the data from the  openholidays API
+            - convert the json style data to a dataframe calendar
+            - group the holidays by type or name
+            - resample the holiday flags to hourly resolution
+            - save the result to file
+        
+        Args
+        ----------
+        groupmethod, string
+            - when value is 'holidaytype' there will be three categories:
+              bank holidays, public holidays and school holidays    
+            - when value is 'holidayname' each holiday will have its own 
+              category
+              
+        Keyword Args
+        -----------
+        filename, string, default: '../data/holidays.csv'
+        file in which the results are saved
+        
+        File Output
+        ------------
+        a csv file with an hourly date time index in the local time system
+        and one column for each holiday category. The value is 1 if the 
+        holiday group category applies at that time, else zero.
+        
                 
         """
         self.pull_all()
