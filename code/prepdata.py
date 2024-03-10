@@ -341,7 +341,7 @@ def daylightsaving_flags(dt_index, switchdaylag=0) :
     summertime_np = np.asarray(summertime)
     
     #now find the switch days
-    switch_point_index=np.where(summertime_np[0:-1]!=summertime_np[1:] )
+    switch_point_index = np.where(summertime_np[0:-1]!=summertime_np[1:] )
     ##get the dates of the switches
     switchdates=dt_index[switch_point_index].date
     
@@ -353,10 +353,8 @@ def daylightsaving_flags(dt_index, switchdaylag=0) :
     
     for switchday in switchdates:
         for lagday in range(switchdaylag+1):
-            delta_day=lagday*pd.Timedelta('1day')
-            lagged_date=switchday+delta_day
-            print('lagged date: ', lagged_date)
-            
+            delta_day = lagday*pd.Timedelta('1day')
+            lagged_date = switchday+delta_day                        
             switchday_flag[dates == lagged_date] = 1
             
     
@@ -405,13 +403,13 @@ class EntsoePower:
                     
         """  
 
-        self.startdatetime=f'{startdate}T00:00'
-        self.enddatetime=f'{enddate}T23:45'
-        self.country_code=country_code     
-        self.loginfile=loginfile
-        self.entsoe_key=read_login(self.loginfile, 'entsoe')
-        self.data_15_min=None
-        self.time_zone=country_timezone[self.country_code]
+        self.startdatetime = f'{startdate}T00:00'
+        self.enddatetime   = f'{enddate}T23:45'
+        self.country_code  = country_code     
+        self.loginfile     = loginfile
+        self.entsoe_key    = read_login(self.loginfile, 'entsoe')
+        self.data_15_min   = None
+        self.time_zone     = country_timezone[self.country_code]
         
     def pull_process_save(self,filename):
             """
@@ -428,9 +426,9 @@ class EntsoePower:
             
             self.split()
             
-            filebase,extension=os.path.splitext(filename)
+            filebase,extension = os.path.splitext(filename)
             self.forecasted_load_hr.to_csv(f'{filebase}_forecast_{extension}')
-            self.actual_load_hr.to_csv(f'{filebase}_forecast_{extension}')  
+            self.actual_load_hr.to_csv(f'{filebase}_actual_{extension}')  
             
                           
     
@@ -448,12 +446,12 @@ class EntsoePower:
         entsoe_client = EntsoePandasClient(api_key=self.entsoe_key)
         
          
-        self.data_raw=entsoe_client.query_load_and_forecast(
+        self.data_raw = entsoe_client.query_load_and_forecast(
                                            self.country_code, 
                                            start=start, end=end)
         
         #replace spaces in column headers with underscores
-        self.data_raw.columns=[col_head.replace(' ', '_') 
+        self.data_raw.columns = [col_head.replace(' ', '_') 
                                   for col_head in self.data_raw.columns]
         
         
@@ -468,7 +466,7 @@ class EntsoePower:
 
         """
         
-        self.data_hr=self.data_raw.resample('h', origin='start_day').mean()
+        self.data_hr = self.data_raw.resample('h', origin='start_day').mean()
         
         
     def split(self):
@@ -542,7 +540,7 @@ class OpenHolidays:
     def pull_all(self):
         self.public_holidays = self.pull_holidays('Public')
         self.school_holidays = self.pull_holidays('School')        
-        self.all_holidays = self.public_holidays + self.school_holidays
+        self.all_holidays    = self.public_holidays + self.school_holidays
     
     
     def pull_holidays(self,holidaytype):
@@ -562,12 +560,12 @@ class OpenHolidays:
 
         """
         
-        requestline= (f'https://openholidaysapi.org/{holidaytype}'
-                      'Holidays?'
-                      f'countryIsoCode={self.country_code}&' 
-                      'languageIsoCode=EN&'
-                      f'validFrom={self.startdate_str}&'
-                      f'validTo={self.enddate_str}')
+        requestline = (f'https://openholidaysapi.org/{holidaytype}'
+                       'Holidays?'
+                       f'countryIsoCode={self.country_code}&' 
+                       'languageIsoCode=EN&'
+                       f'validFrom={self.startdate_str}&'
+                       f'validTo={self.enddate_str}')
         
         
         response = requests.get(requestline)
@@ -623,8 +621,8 @@ class OpenHolidays:
         """
                
         
-        start_date4_df=pd.to_datetime(self.startdate_str, yearfirst=True)
-        end_date4_df=pd.to_datetime(self.enddate_str, yearfirst=True)
+        start_date4_df = pd.to_datetime(self.startdate_str, yearfirst=True)
+        end_date4_df   = pd.to_datetime(self.enddate_str, yearfirst=True)
         
         
         # by setting inclusive to left 0:00 of the next day is excluded
@@ -635,7 +633,7 @@ class OpenHolidays:
                                 freq='D')
         
         if groupmethod == 'holidaytype':
-            column_index  =['Public','Bank','School']
+            column_index  = ['Public','Bank','School']
             holiday_df = pd.DataFrame(0,index=date_index,columns=column_index)
             for holiday in self.all_holidays:
                 holiday_start = pd.to_datetime(holiday['startDate'],
@@ -666,7 +664,7 @@ class OpenHolidays:
     
     def to_hourly(self):
         """
-        resample the 
+        resample the daily holiday flags to an hourly resolution.
         
         Returns
         -------
@@ -710,7 +708,91 @@ class ERA5Weather:
         pass
     
     
+def prep_all_data(country_code, startdate, enddate, 
+            resultdir='../data/', loginfile='../userdata/logins.txt' ):
+    """
+    Function that prepares all the data that is needed for the demand forecast
+
+    Args
+    ----------
+    country_code : string
+        two letter iso country code
+    startdate : string
+        first date  of the time period in the format 'YYYY-MM-DD'
+    enddate : string
+        last date  of the time period in the format 'YYYY-MM-DD'
+        
+    Keyword Args
+    ----------    
+        
+    resultdir : string, default '../data/'
+    directory where the data is to be stored
     
+
+    Returns
+    -------
+    None.
+                
+    
+    File output
+    ----------
+    A csv file for each each dataset. The files have the following names:
+        
+    <country_code>_<startdate>_to_<enddate>_<description of the data>.csv
+
+    """
+    
+    filenamebase = f'{resultdir}/{country_code}_{startdate}_to_{enddate}'
+                       
+    
+    # first get the power data from the ENTSO-E platform    
+    entsoe_obj = EntsoePower( country_code, startdate, enddate, 
+                              loginfile=loginfile )    
+    entsoe_filename = f'{filenamebase}_ENTSOE_power.csv'    
+    entsoe_obj.pull_process_save(entsoe_filename)
+    
+    #get the holidays group them by type
+    holiday_obj = OpenHolidays( country_code, startdate, enddate)    
+    holiday_filename = f'{filenamebase}_holidays_by_type.csv'    
+    holiday_obj.pull_process_save('holidaytype', filename=holiday_filename)
+    
+    #create a different dataset with the holidays grouped by their name
+    holiday_filename = f'{filenamebase}_holidays_by_name.csv'    
+    holiday_obj.json2df('holidayname')
+    holiday_obj.to_hourly() 
+    holiday_obj.holiday_hr.to_csv(holiday_filename)
+        
+    #take the datetime index from the hourly entsoe data
+    dt_index = entsoe_obj.data_hr.index
+    
+    #use the datetime index to generate the time related variables
+    ##first treat the hour as a category
+    hour_var_as_cat = hour_variable(dt_index, as_category=True)
+    hour_filename   = f'{filenamebase}_hour_as_category.csv'     
+    hour_var_as_cat.to_csv(hour_filename)
+    
+    ## second treat the hour as a continuous variable
+    hour_var_as_var = hour_variable(dt_index, as_category=False)
+    hour_filename   = f'{filenamebase}_hour_as_variable.csv' 
+    hour_var_as_var.to_csv(hour_filename)
+    
+    # determine the typedays
+    ## first the version where the typeday equals the weekday
+    weekday_type_day = type_day(dt_index, combine_midweekdays=False)
+    typeday_filename = f'{filenamebase}_weekday_as_typeday.csv' 
+    weekday_type_day.to_csv(typeday_filename)
+    
+    ##now the version where Tuesday, wednesday and thursday are combined
+    combiday_type_day = type_day(dt_index, combine_midweekdays=True)
+    typeday_filename  = f'{filenamebase}_combined_weekday_as_typeday.csv' 
+    weekday_type_day.to_csv(typeday_filename)    
+     
+    #get the daylight savingstimes flags
+    for lag in range(7):
+        dls_flags = daylightsaving_flags(dt_index, switchdaylag=lag)
+        dls_flag_filename  = ( f'{filenamebase}_daylight_savings_time_flags'
+                               f'_lag_{lag}.csv' )
+        dls_flags.to_csv(dls_flag_filename)    
 
 
 
