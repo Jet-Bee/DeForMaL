@@ -63,12 +63,13 @@ __maintainer__ = "Jethro Betcke"
 # TODO bridgedays: create category for days between holiday and weekend
 # TODO make structure and names of the different classes more similar
 
-
+import os
 import requests
 import pandas as pd
 import numpy as np
 import time
 from entsoe import EntsoePandasClient
+
 
 
 #coupling ISO country codes with python timezones
@@ -291,7 +292,7 @@ def type_day(dt_index, combine_midweekdays=False):
     if combine_midweekdays:
         midweek_mask = (typeday_df.values>0) & (typeday_df.values<4)
         typeday_df.loc[midweek_mask]=2
-        
+         
         
     typeday_ohe_df = one_hot_df(typeday_df,column_prefix='typeday_')    
         
@@ -414,16 +415,23 @@ class EntsoePower:
         
     def pull_process_save(self,filename):
             """
-            one stop shop to do everything
+            one stop shop to do everything:
+                - pulling the 15 minute data from the API
+                - averaging it to 1h resolution
+                - split the data in forecast and actual
+                - save the results to csv
             
             """
             self.pull_all()
             self.to_hourly()
+            self.data_hr.to_csv(filename)
+            
             self.split()
             
+            filebase,extension=os.path.splitext(filename)
+            self.forecasted_load_hr.to_csv(f'{filebase}_forecast_{extension}')
+            self.actual_load_hr.to_csv(f'{filebase}_forecast_{extension}')  
             
-            
-            self.data_hr.to_csv(filename)
                           
     
     def pull_all(self):
@@ -526,18 +534,33 @@ class OpenHolidays:
                 
         """
         self.pull_all()
-        self.json2df('h', groupmethod)
+        self.json2df( groupmethod=groupmethod)
+        self.to_hourly()        
         self.holiday_hr.to_csv(filename)
                              
     
     def pull_all(self):
         self.public_holidays = self.pull_holidays('Public')
-        self.school_holidays = self.pull_holidays('School')
-        
+        self.school_holidays = self.pull_holidays('School')        
         self.all_holidays = self.public_holidays + self.school_holidays
     
     
     def pull_holidays(self,holidaytype):
+        """
+        
+
+        Args
+        ----------
+        holidaytype : string
+            'public' or 'school'.
+            
+        Returns
+        ----------
+        response.json(): dict
+            the requested holiday data in json format
+
+
+        """
         
         requestline= (f'https://openholidaysapi.org/{holidaytype}'
                       'Holidays?'
@@ -581,42 +604,35 @@ class OpenHolidays:
         return holiday_name_lst
         
         
-    def json2df(self,  groupmethod='holidaytype', resolution='h'):
+    def json2df(self,  groupmethod='holidaytype'):
         """
         create a pandas "calender" each row represents a date
         dependent on the groupingmethod each column represents a
         holiday or a group of holidays
-        the value in the cells will be 0 (no holiday) or 1 (yes holiday)   
+        the value in the cells will be 0 (no holiday) or 1 (holiday)   
         
         Keyword  Args
         ---------
         groupmethod, string, default 'holidaytype'
             - when value is 'holidaytype' there will be three categories:
-              bank holidays, Public holidays and school holidays    
+              bank holidays, public holidays and school holidays    
             - when value is 'holidayname' each holiday will have its own 
               category
               
-        resolution, string, default 'h'
-            A value of 'h' gives a resolution of an hour, a value of 'D' gives 
-            a resolution of a day, other resolutions according to pandas
-            conventions.
         
         """
                
         
         start_date4_df=pd.to_datetime(self.startdate_str, yearfirst=True)
         end_date4_df=pd.to_datetime(self.enddate_str, yearfirst=True)
-        #make sure the last day is completely included in the 
-        #timeseries, by including 0:00 of the next day
-        if resolution != 'D':
-            end_date4_df=end_date4_df+pd.Timedelta('1D')
+        
         
         # by setting inclusive to left 0:00 of the next day is excluded
         # form the timeseries
         #dt_index=pd.date_range(start=start_date4_df, end=end_date4_df, 
         #                       freq=resolution, inclusive='left')
         date_index=pd.date_range(start=start_date4_df, end=end_date4_df, 
-                                freq='D')#, inclusive='left')
+                                freq='D')
         
         if groupmethod == 'holidaytype':
             column_index  =['Public','Bank','School']
@@ -640,25 +656,47 @@ class OpenHolidays:
         else:
             raise Exception(f'unknown groupmethod {groupmethod}')
                 
-                
-                
-        #now bring it to desired resolution with resample
-        if resolution == 'D' :
-            self.holiday_df=holiday_df
-        else:
-            self.data_hrly=holiday_df.resample(resolution).ffill()
-            #remove the last row that was only there to make sure the
-            #last day was filled completely
-            self.holiday_hr.drop(index=self.holiday_df_out.index[-1],
-                                axis=0,inplace=True)
-            
-            #bring into the local time system
-            self.holiday_hr.tz_localize(self.time_zone)
            
-        
                 
+        
+        #first bring  the dates from tz naive to local timezone
+        
+        self.holiday_day = holiday_df.tz_localize(self.time_zone)
+        
+    
+    def to_hourly(self):
+        """
+        resample the 
+        
+        Returns
+        -------
+        None.
+
+        """
+        resolution = 'h'        
+        
+        #pandas resample does not extrapolate, 
+        #so to make sure the last day is completely included in the 
+        #timeseries, 0:00 of the next day is added to the dataset
+        
+        extraday = pd.DataFrame(index = [self.holiday_day.index[-1] 
+                                                        + pd.Timedelta('1D')],
+                                columns = self.holiday_day.columns )                                          
+                
+        holiday_day_extended = pd.concat([self.holiday_day,extraday])
+        
+        #resample to the desired resolution
+               
+        self.holiday_hr = holiday_day_extended.resample(resolution).ffill()
+        
+        #remove the last row that was only there to make sure the
+        #last day was filled in completely
+        self.holiday_hr.drop(index=self.holiday_hr.index[-1],
+                            axis=0,inplace=True)
         
 
+           
+        
 
 
 class ERA5Weather:
