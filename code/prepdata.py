@@ -412,9 +412,9 @@ class EntsoePower:
         
     def pull_process_save(self,filename):
             """
-            one stop shop to do everything:
-                - pulling the 15 minute data from the API
-                - averaging it to 1h resolution
+            one stop shop to:
+                - pull the 15 minute data from the API
+                - average it to 1h resolution
                 - split the data in forecast and actual
                 - save the results to csv
                 
@@ -423,16 +423,16 @@ class EntsoePower:
             <filename>: 
                 csv file with hourly forecasted and actual load
             <filenamebase>_forecast<extension>: 
-                csv file with hourly forecasted load
+                csv file with only the hourly forecasted load
             <filenamebase>_actual<extension>: 
-                csv file with hourly actual load                
+                csv file with only the hourly actual load                
                                                
             
             """
             self.pull_all()
             self.to_hourly()
             self.data_hr.to_csv(filename)
-            
+               
             self.split()
             
             filebase,extension = os.path.splitext(filename)
@@ -869,7 +869,40 @@ def prep_all_data(country_code, startdate, enddate,
 
 
 
+def split_df_on_date(splitdate, x_data_df ):
+    """
+    
+    Splits a dataframe with a datetime index on a given date.
+    The timepoint 00:00 of the splitdate will be the first timepoint of
+    the second dataframe(s). 
 
+
+    Args
+    ----------
+    splitdate : string
+        Date in format 'YYYY-MM-DD'
+    
+    x_data_df : pandas dataframe with datetime index
+        
+
+    Returns
+    -------
+    x_before_df : pandas dataframe with datetime index
+        first part of x_data_df up to splitdate 0:00
+        (datetime index < splitdate 0:00)
+    
+    x_after_df : pandas dataframe with datetime index
+        second part of x_data_df starting at splitdate 0:00
+        (datetime index >= splitdate 0:00)
+    """
+    #TODO: also accepte datenum or pandas timestamp
+    
+    train_bool_index = x_data_df.index < pd.Timestamp(splitdate)
+    
+    x_before_df = x_data_df(train_bool_index)
+    x_after_df  = x_data_df(~train_bool_index)
+    
+    return x_before_df, x_after_df
 
 
 
