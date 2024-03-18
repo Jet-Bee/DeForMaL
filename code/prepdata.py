@@ -68,6 +68,7 @@ import requests
 import pandas as pd
 import numpy as np
 import time
+import pickle
 from entsoe import EntsoePandasClient
 
 
@@ -431,13 +432,13 @@ class EntsoePower:
             """
             self.pull_all()
             self.to_hourly()
-            self.data_hr.to_csv(filename)
+            self.data_hr.to_pickle(filename)
                
             self.split()
             
             filebase,extension = os.path.splitext(filename)
-            self.forecasted_load_hr.to_csv(f'{filebase}_forecast{extension}')
-            self.actual_load_hr.to_csv(f'{filebase}_actual{extension}')  
+            self.forecasted_load_hr.to_pickle(f'{filebase}_forecast{extension}')
+            self.actual_load_hr.to_pickle(f'{filebase}_actual{extension}')  
             
                           
     
@@ -572,7 +573,7 @@ class OpenHolidays:
         self.enddate_str   = enddate
         
         
-    def pull_process_save(self,groupmethod, filename='../data/holidays.csv'):
+    def pull_process_save(self,groupmethod, filename='../data/holidays.pkl'):
         """
 
         one stop shop to:
@@ -592,7 +593,7 @@ class OpenHolidays:
               
         Keyword Args
         -----------
-        filename, string, default: '../data/holidays.csv'
+        filename, string, default: '../data/holidays.pkl'
         file in which the results are saved
         
         File Output
@@ -606,7 +607,7 @@ class OpenHolidays:
         self.pull_all()
         self.json2df( groupmethod=groupmethod)
         self.to_hourly()        
-        self.holiday_hr.to_csv(filename)
+        self.holiday_hr.to_pickle(filename)
                              
     
     def pull_all(self):
@@ -820,19 +821,19 @@ def prep_all_data(country_code, startdate, enddate,
     # first get the power data from the ENTSO-E platform    
     entsoe_obj = EntsoePower( country_code, startdate, enddate, 
                               loginfile=loginfile )    
-    entsoe_filename = f'{filenamebase}_ENTSOE_power.csv'    
+    entsoe_filename = f'{filenamebase}_ENTSOE_power.pkl'    
     entsoe_obj.pull_process_save(entsoe_filename)
     
     #get the holidays group them by type
     holiday_obj = OpenHolidays( country_code, startdate, enddate)    
-    holiday_filename = f'{filenamebase}_holidays_by_type.csv'    
+    holiday_filename = f'{filenamebase}_holidays_by_type.pkl'    
     holiday_obj.pull_process_save('holidaytype', filename=holiday_filename)
     
     #create a different dataset with the holidays grouped by their name
-    holiday_filename = f'{filenamebase}_holidays_by_name.csv'    
+    holiday_filename = f'{filenamebase}_holidays_by_name.pkl'    
     holiday_obj.json2df('holidayname')
     holiday_obj.to_hourly() 
-    holiday_obj.holiday_hr.to_csv(holiday_filename)
+    holiday_obj.holiday_hr.to_pickle(holiday_filename)
         
     #take the datetime index from the hourly entsoe data
     dt_index = entsoe_obj.data_hr.index
@@ -840,31 +841,31 @@ def prep_all_data(country_code, startdate, enddate,
     #use the datetime index to generate the time related variables
     ##first treat the hour as a category
     hour_var_as_cat = hour_variable(dt_index, as_category=True)
-    hour_filename   = f'{filenamebase}_hour_as_category.csv'     
-    hour_var_as_cat.to_csv(hour_filename)
+    hour_filename   = f'{filenamebase}_hour_as_category.pkl'     
+    hour_var_as_cat.to_pickle(hour_filename)
     
     ## second treat the hour as a continuous variable
     hour_var_as_var = hour_variable(dt_index, as_category=False)
-    hour_filename   = f'{filenamebase}_hour_as_variable.csv' 
-    hour_var_as_var.to_csv(hour_filename)
+    hour_filename   = f'{filenamebase}_hour_as_variable.pkl' 
+    hour_var_as_var.to_pickle(hour_filename)
     
     # determine the typedays
     ## first the version where the typeday equals the weekday
     weekday_type_day = type_day(dt_index, combine_midweekdays=False)
-    typeday_filename = f'{filenamebase}_weekday_as_typeday.csv' 
-    weekday_type_day.to_csv(typeday_filename)
+    typeday_filename = f'{filenamebase}_weekday_as_typeday.pkl' 
+    weekday_type_day.to_pickle(typeday_filename)
     
     ##now the version where Tuesday, wednesday and thursday are combined
     combiday_type_day = type_day(dt_index, combine_midweekdays=True)
-    typeday_filename  = f'{filenamebase}_combined_weekday_as_typeday.csv' 
-    weekday_type_day.to_csv(typeday_filename)    
+    typeday_filename  = f'{filenamebase}_combined_weekday_as_typeday.pkl' 
+    weekday_type_day.to_pickle(typeday_filename)    
      
     #get the daylight savingstimes flags
     for lag in range(7):
         dls_flags = daylightsaving_flags(dt_index, switchdaylag=lag)
         dls_flag_filename  = ( f'{filenamebase}_daylight_savings_time_flags'
-                               f'_lag_{lag}.csv' )
-        dls_flags.to_csv(dls_flag_filename)    
+                               f'_lag_{lag}.pkl' )
+        dls_flags.to_pickle(dls_flag_filename)    
 
 
 
@@ -897,10 +898,12 @@ def split_df_on_date(splitdate, x_data_df ):
     """
     #TODO: also accepte datenum or pandas timestamp
     
-    train_bool_index = x_data_df.index < pd.Timestamp(splitdate)
     
-    x_before_df = x_data_df(train_bool_index)
-    x_after_df  = x_data_df(~train_bool_index)
+    
+    train_bool_index = x_data_df.index.date < pd.Timestamp(splitdate).date()           
+    
+    x_before_df = x_data_df[train_bool_index]
+    x_after_df  = x_data_df[~train_bool_index]
     
     return x_before_df, x_after_df
 
