@@ -532,8 +532,8 @@ class EntsoePower:
 
         """
         
-        self.forecasted_load_hr = self.data_hr['Forecasted_Load']
-        self.actual_load_hr     = self.data_hr['Actual_Load']
+        self.forecasted_load_hr = self.data_hr['Forecasted_Load'].toframe()
+        self.actual_load_hr     = self.data_hr['Actual_Load'].toframe()
                            
                                
                 
