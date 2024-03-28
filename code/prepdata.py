@@ -171,6 +171,70 @@ def combines_dfs(*argv):
     return result_ts_df    
 
 
+def force_df(in_data):
+    """
+    checks if an input is a pandas series or pandas dataframe
+    if it is a series the input will be converted to dataframe.
+    if it is already a dataframe the output will equal the input
+    
+    throws an exception for any other input type
+    
+    Args:
+    -------    
+    in_data: pandas dataframe or series.
+    
+    Returns
+    -------
+    out_data: pandas dataframe
+        contains the same data as in_data
+
+    """
+    
+    in_type=str(type(in_data)).strip('()<>\'"')
+        
+    if in_type.endswith('Series'):    
+        out_data = in_data.to_frame()
+    elif in_type.endswith('DataFrame'):
+        out_data = in_data  
+    else:
+        raise Exception('input can only be pandas DataFrame or'
+                            ' pandas Series')
+    return out_data   
+        
+        
+def force_series(in_data):
+    """
+    Checks if an input is a pandas series or pandas dataframe
+    if it is a dataframe the input will be converted to a series.
+    If there is more than one column in the dataframe, only the first
+    column will be used for the series
+    
+    If it is already a dseries the output will equal the input
+    
+    throws an exception for any other input type
+    
+    Args:
+    -------    
+    in_data: pandas dataframe or series.
+    
+    Returns
+    -------
+    out_data: pandas dataframe
+        contains the same data as in_data
+
+    """     
+
+    in_type=str(type(in_data)).strip('()<>\'"')        
+    
+    if in_type.endswith('DataFrame'):    
+        out_data = in_data.iloc[:,0].squeeze()
+    elif in_type.endswith('Series'):
+        out_data = in_data  
+    else:
+        raise Exception('input can only be pandas DataFrame or'
+                            ' pandas Series')
+    return out_data           
+        
 
 
 def read_login(loginfile, datasource):
@@ -532,8 +596,8 @@ class EntsoePower:
 
         """
         
-        self.forecasted_load_hr = self.data_hr['Forecasted_Load'].toframe()
-        self.actual_load_hr     = self.data_hr['Actual_Load'].toframe()
+        self.forecasted_load_hr = self.data_hr['Forecasted_Load']
+        self.actual_load_hr     = self.data_hr['Actual_Load']
                            
                                
                 
