@@ -18,6 +18,7 @@ __maintainer__ = "Jethro Betcke"
 
 
 # TODO: 
+# - force everything into dataframe for consistency    
 # - accuracy metrics relative to mean actual       
 # - method: figure with histograms of both datasets
 # - method: figure with histogram of errors
@@ -34,6 +35,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import metrics
+import prepdata
 
 
 class Eval:
@@ -123,34 +125,16 @@ class Eval:
         
         #TODO: data_completeness as percentage
 
-        actual_type=str(type(y_actual)).strip('()<>\'"')
-
-        
-        if actual_type.endswith('DataFrame'):
-            self.y_actual_cleaned = y_actual[:,0] 
-        elif actual_type.endswith('Series'):    
-            self.y_actual_cleaned = y_actual  
-        else:
-            raise Exception('y_actual can only be pandas DataFrame or'
-                            ' pandas Series')
-            
-        model_type=str(type(y_model)).strip('()<>\'"')    
-            
-        if model_type.endswith('DataFrame'):
-            self.y_model_cleaned = y_model[:,0] 
-        elif model_type.endswith('Series'):    
-            self.y_model_cleaned = y_model  
-        else:
-            raise Exception('y_model can only be pandas DataFrame or'
-                            ' pandas Series')            
-            
-        
+        #make sure both inputs are dataseries.
+        self.y_actual_cleaned = prepdata.force_series(y_actual)
+        self.y_model_cleaned  = prepdata.force_series(y_model)
+                               
         #make sure x and y data cover the same period
         intersect_index = self.y_model_cleaned.index.intersection(
                                                    self.y_actual_cleaned.index)
-        self.y_model_cleaned  = self.y_model_cleaned[intersect_index]
-        self.y_actual_cleaned  = self.y_actual_cleaned[intersect_index]     
-            
+        self.y_actual_cleaned  = self.y_actual_cleaned[intersect_index] 
+        self.y_model_cleaned   = self.y_model_cleaned[intersect_index]
+                
 
         #determine the number of data point in the intersection
         self.data_metrics.loc['total nr data pairs','value'] = \
@@ -160,7 +144,7 @@ class Eval:
                                                   'total number of data pairs'
                                                   
         #select the valid data
-        valid_actual_mask = np.isfinite(y_actual.values)                
+        valid_actual_mask = np.isfinite(y_actual.values).flatten()       
         self.data_metrics.loc['nr of valid actual points']={}
         self.data_metrics.loc['nr of valid actual points','value'] = np.sum(
                                                              valid_actual_mask)
@@ -169,7 +153,7 @@ class Eval:
                   'Number of points of the actual (i.e. reference) data in the'
                                       'intersection, that have a finite value') 
            
-        valid_model_mask  = np.isfinite(y_model.values)    
+        valid_model_mask  = np.isfinite(y_model.values).flatten() 
         self.data_metrics.loc['nr of valid model points','value'] = np.sum(
                                                               valid_model_mask)
         self.data_metrics.loc['nr of valid model points','unit']  = '1'
@@ -178,6 +162,7 @@ class Eval:
             ' that have a finite value')        
                                           
         valid_data_pairs_mask =  valid_model_mask & valid_actual_mask
+        
         
         #determine the number of data point in the intersection
         self.data_metrics.loc['nr of valid data pairs','value'] = np.sum(
@@ -193,8 +178,8 @@ class Eval:
 
         
         # for later use in figures and report
-        self.period_string = ( f'{self.y_model_cleaned.index[0]}'
-                               f'-{self.y_model_cleaned.index[-1]}' )
+        self.period_string = ( f'{self.y_model_cleaned.index[0].date()}'
+                               f' to {self.y_model_cleaned.index[-1].date()}' )
         
         # the maximum of 
         self.max_of_max= np.max( [self.y_model_cleaned.max(),
@@ -294,9 +279,10 @@ class Eval:
         
         #Comparison metrics
         # RMSE and its components (RMSE^2 = MBE^2 + BoSD^2  +Disp^2)
-        self.acc_metrics.loc['RMSE','value'] = metrics.root_mean_squared_error(
-                                                         self.y_actual_cleaned, 
-                                                         self.y_model_cleaned )
+        self.acc_metrics.loc['RMSE','value'] = np.sqrt(
+                                          metrics.mean_squared_error(
+                                                      self.y_actual_cleaned, 
+                                                      self.y_model_cleaned ) )
         self.acc_metrics.loc['RMSE','unit']  = self.unit
         self.acc_metrics.loc['RMSE','description']  = ('Root Mean Square Error'
                                     'Note: RMSE^2= MBE^2 + BoSD^2 +disp^2')  
@@ -373,7 +359,7 @@ class Eval:
         self.scat_ax.set_xlabel(f'Actual ({self.unit})')
         self.scat_ax.set_ylabel ( f'{self.model_name} ({self.unit})')
         
-        self.scat_ax.plot(self.y_actual_cleaned, self.y_model_cleaned, 'k.')
+        self.scat_ax.plot(self.y_actual_cleaned.values, self.y_model_cleaned.values, 'k.')
         
         #make the plot square
         
@@ -390,17 +376,19 @@ class Eval:
         self.scat_ax.set_ylim(newlim)    
         
         self.scat_ax.plot(newlim,newlim, 'g--')
-        #make a square plot
-        #self.scat_ax.set_aspect(1.0/self.scat_ax.get_data_ratio(), 
-        #                                                      adjustable='box')
-        #plt.axis('square')
-        
-
         
         plt.show()
         
+    
+    def timeseries_plot(self):
+        self.ts_fig,self.ts_ax = plt.subplots()  
+        self.ts_ax.set_title(f'{self.location}  {self.period_string}')
+        self.ts_ax.set_xlabel('date time')
+        self.ts_ax.set_ylabel ( f'Power Demand ({self.unit})')
         
-        
+        self.ts_ax.plot(self.y_actual_cleaned.index,
+                                                   self.y_actual_cleaned.values, 'k-')
+        self.ts_ax.plot(self.y_model_cleaned.index, self.y_model_cleaned.values, 'r:d')        
         
 
 
