@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Feb 22 14:38:16 2024
+Module for power demand forecast of the DeForMaL software
 
-@author: Win10 Pro x64
+contains the classes: 
+    NN_Model: Neural Network model for power demand forecasting
+
 """
+
+__author__     = "Jethro Betcke"
+__copyright__  = "Copyright 2024, Jethro Betcke"
+__version__    = "0.01"
+__maintainer__ = "Jethro Betcke"
+
 
 from tensorflow import keras
 from keras import models 
@@ -80,6 +88,7 @@ class NN_Model():
         
         self.define_model()
         self.model_trained = False
+        self.histories = []
         self.x_scaler = None
         self.y_scaler = None
        
@@ -137,11 +146,23 @@ class NN_Model():
             
     def define_model(self):
         """
-        Defines the neural network model
+        Defines the neural network model, based on the keras Sequential model.
+        
+        
+        Uses Attributes:
+        ----------------    
+        .x_data_train_df pandas dataframe
+            used to determine the number of inputs
+        nr_hidden_layers, int
+            the number of hidden layers of the model
+        nr_hidden_nodes, int
+            number of nodes for each hidden layer
+        activation4hidden, string or function
+            activation function for the hidden layers
 
-        Returns
+        Creates/overwrites Attribute
         -------
-        None.
+        model, keras model
 
         """
         nr_of_x_params = self.x_data_train_df.shape[1]
@@ -162,7 +183,7 @@ class NN_Model():
                      verbose=1):
         
         """
-        Train or retrain the model 
+        Train the model 
         
         
         Keyword Args:
@@ -190,13 +211,58 @@ class NN_Model():
         self.model.compile(optimizer= Adam(learning_rate=learning_rate), 
                       loss = "mean_squared_error" )
         
-        self.history = self.model.fit( x=x_train_scaled,    
-                                       y=y_train_scaled, 
-                                       epochs= epochs,
-                                       batch_size= batch_size, 
-                                       validation_split= 0.3, 
-                                       verbose= verbose)
+        history = self.model.fit( x=x_train_scaled,    
+                                  y=y_train_scaled, 
+                                  epochs= epochs,
+                                  batch_size= batch_size, 
+                                  validation_split= 0.0, 
+                                  verbose= verbose)
+        self.histories = self.histories + [history]     
+        
         self.model_trained = True 
+        
+    def plot_history(self):
+        """
+        plots the loss or accuracy metric and the correspoonding validation 
+        metric as function of the epochs, seperate training sessions 
+        are shown in different colours
+        
+
+
+        Returns
+        -------
+        None.
+
+        """
+        metric     = 'loss'
+        val_metric = f'val_{metric}'
+        
+        if len(self.histories) > 0:
+            loss_fig,loss_ax = plt.subplots()
+            
+            cumm_epochs = 0
+            
+            
+        
+            for i, history in enumerate(self.histories):
+                epochs = cumm_epochs + np.arange(
+                    len(history.history[metric]))+1
+                cumm_epochs= epochs[-1]
+                plt.plot(epochs, history.history[metric], 
+                         label=f'{metric}, training {i}')
+                
+                plt.plot(epochs, history.history[val_metric], 
+                         label=f'{val_metric}, training {i}')
+                
+                
+                
+            plt.legend(bbox_to_anchor=(1.03, 1.0), loc='upper left')
+            plt.tight_layout()
+            plt.show()   
+                
+        else:
+            print('no training history to plot yet')
+            
         
         
         
@@ -230,13 +296,8 @@ class NN_Model():
             
         #apply scaling
         ## Apply the same scaling to the test data
-        x_app_scaled = self.x_scaler.transform(application_x.values)#.flatten() 
-        
-        print('x_app_scaled.shape: ',x_app_scaled.shape)
-        
-        #print('x_app_scaled: ',x_app_scaled[0:30])
-        
-        
+        x_app_scaled = self.x_scaler.transform(application_x.values)
+                      
         y_forecasted=self.y_scaler.inverse_transform( 
                                              self.model.predict(x_app_scaled) )
         
