@@ -233,7 +233,82 @@ def force_series(in_data):
     else:
         raise Exception('input can only be pandas DataFrame or'
                             ' pandas Series')
-    return out_data           
+    return out_data         
+
+    
+
+def split_df_on_date(splitdate, x_data_df ):
+    """
+    
+    Splits a dataframe with a datetime index on a given date.
+    The timepoint 00:00 of the splitdate will be the first timepoint of
+    the second dataframe(s). 
+
+
+    Args
+    ----------
+    splitdate : string
+        Date in format 'YYYY-MM-DD'
+    
+    x_data_df : pandas dataframe with datetime index
+        
+
+    Returns
+    -------
+    x_before_df : pandas dataframe with datetime index
+        first part of x_data_df up to splitdate 0:00
+        (datetime index < splitdate 0:00)
+    
+    x_after_df : pandas dataframe with datetime index
+        second part of x_data_df starting at splitdate 0:00
+        (datetime index >= splitdate 0:00)
+    """
+    #TODO: also accepte datenum or pandas timestamp
+    
+    
+    
+    train_bool_index = x_data_df.index.date < pd.Timestamp(splitdate).date()           
+    
+    x_before_df = x_data_df[train_bool_index]
+    x_after_df  = x_data_df[~train_bool_index]
+    
+    return x_before_df, x_after_df
+
+
+def intersect_df(in_df1, in_df2):
+    """
+    Determines the common datetime points of two dataframes (or pandas series)
+    that each have a datetime index, and gives back the dataframes for these 
+    common datapoints. The outputs are always data frames.
+    
+    Args
+    -------
+    in_df1: pandas dataframe, or series, with datetime index
+    in_df2: pandas dataframe, or series, with datetime index
+       
+
+    Returns
+    -------
+    out_df1: pandas dataframe with datetime index
+        in_df1 only containing the rows correponding with datetime points
+        that are also present in in_df2
+    out_df2: pandas dataframe with datetime index
+        in_df2 only containing the rows correponding with datetime points
+        that are also present in in_df1
+
+    """
+    
+    # make sure x and y data cover same period       
+    intersect_index = force_df(in_df1).index.intersection(
+                                                        in_df2.index)
+    
+    if np.sum(intersect_index) == 0:
+        raise Warning('No common datetime points between inputs')
+        
+    out_df1  = force_df(in_df1).loc[intersect_index,:]
+    out_df2  = force_df(in_df2).loc[intersect_index,:]    
+
+    return out_df1, out_df2
         
 
 
@@ -934,42 +1009,7 @@ def prep_all_data(country_code, startdate, enddate,
 
 
 
-def split_df_on_date(splitdate, x_data_df ):
-    """
-    
-    Splits a dataframe with a datetime index on a given date.
-    The timepoint 00:00 of the splitdate will be the first timepoint of
-    the second dataframe(s). 
 
-
-    Args
-    ----------
-    splitdate : string
-        Date in format 'YYYY-MM-DD'
-    
-    x_data_df : pandas dataframe with datetime index
-        
-
-    Returns
-    -------
-    x_before_df : pandas dataframe with datetime index
-        first part of x_data_df up to splitdate 0:00
-        (datetime index < splitdate 0:00)
-    
-    x_after_df : pandas dataframe with datetime index
-        second part of x_data_df starting at splitdate 0:00
-        (datetime index >= splitdate 0:00)
-    """
-    #TODO: also accepte datenum or pandas timestamp
-    
-    
-    
-    train_bool_index = x_data_df.index.date < pd.Timestamp(splitdate).date()           
-    
-    x_before_df = x_data_df[train_bool_index]
-    x_after_df  = x_data_df[~train_bool_index]
-    
-    return x_before_df, x_after_df
 
 
 
