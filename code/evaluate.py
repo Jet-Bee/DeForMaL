@@ -387,7 +387,6 @@ class Eval:
         self.scat_ax.set_ylim(newlim)    
         
         self.scat_ax.plot(newlim,newlim, 'g--')
-        
         plt.tight_layout()        
         plt.show()
         
@@ -424,6 +423,8 @@ class Eval:
         self.ts_ax.plot(self.y_model_cleaned.index,
                         self.y_model_cleaned.values, 'r:d',
                         label=self.model_name)
+        
+        plt.legend(bbox_to_anchor = (0.5, 1.1), loc='lower center')
             
         plt.tight_layout()
         plt.show()
@@ -476,7 +477,8 @@ class Eval:
                      label='actual ')
         self.hist_ax.hist(self.y_model_cleaned,bins=bins,alpha=0.5, color='orange',
                      label=self.model_name)
-        self.hist_ax.legend(loc='upper right')
+        plt.legend(bbox_to_anchor = (0.5, 1.1), loc='lower center')
+        
         
         plt.tight_layout()
         plt.show()
