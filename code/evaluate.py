@@ -388,6 +388,7 @@ class Eval:
         
         self.scat_ax.plot(newlim,newlim, 'g--')
         
+        plt.tight_layout()        
         plt.show()
         
     
@@ -399,6 +400,7 @@ class Eval:
         ---------               
         y_actual_cleaned
         y_model_cleaned 
+        model_name
         
         Creates/Overwrites Attributes:
         ------------------------------
@@ -414,11 +416,18 @@ class Eval:
         self.ts_ax.set_title(f'{self.location}  {self.period_string}')
         self.ts_ax.set_xlabel('date time')
         self.ts_ax.set_ylabel ( f'Power Demand ({self.unit})')
+        plt.xticks(rotation=-45) 
         
         self.ts_ax.plot(self.y_actual_cleaned.index,
-                                           self.y_actual_cleaned.values, 'k-')
+                        self.y_actual_cleaned.values, 'k-',
+                        label='actual')
         self.ts_ax.plot(self.y_model_cleaned.index,
-                                           self.y_model_cleaned.values, 'r:d')
+                        self.y_model_cleaned.values, 'r:d',
+                        label=self.model_name)
+            
+        plt.tight_layout()
+        plt.show()
+        
 
     def hist_compare_plot(self) :
         """
@@ -468,13 +477,11 @@ class Eval:
         self.hist_ax.hist(self.y_model_cleaned,bins=bins,alpha=0.5, color='orange',
                      label=self.model_name)
         self.hist_ax.legend(loc='upper right')
+        
+        plt.tight_layout()
+        plt.show()
 
-#plt.xticks(fontsize=35)
-#plt.yticks(fontsize=35)
-#plt.setp(hist_axs.spines.values(), linewidth=2)
-#hist_axs.xaxis.set_tick_params(width=2)
-#hist_axs.yaxis.set_tick_params(width=2)
-#hist_axs.tick_params(right=True, top=True)
+
         
 
 
