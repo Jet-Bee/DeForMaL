@@ -86,6 +86,7 @@ class Eval:
         self.prep_data(y_actual, y_model)
         if unit == 'auto':
             self.get_unit(y_actual)
+
         
       
         
@@ -231,7 +232,7 @@ class Eval:
         calculates several metrics of accuracy and stores the results in
         a pandas dataframe
         
-        Uses Attributes
+        Uses Attributes:
         ---------               
         y_actual_cleaned
         y_model_cleaned     
@@ -346,6 +347,16 @@ class Eval:
         """
         creates a straightforward scatter plot of the model results
         against 
+        
+        Uses Attributes:
+        ---------               
+        y_actual_cleaned
+        y_model_cleaned 
+        
+        Creates/Overwrites Attributes:
+        ------------------------------
+        scat_fig: figure handle
+        scat_ax : axes handle
 
         Returns
         -------
@@ -381,14 +392,89 @@ class Eval:
         
     
     def timeseries_plot(self):
+        """
+        Creates a timeseries plot of y actual and y forecast.
+        
+        Uses Attributes:
+        ---------               
+        y_actual_cleaned
+        y_model_cleaned 
+        
+        Creates/Overwrites Attributes:
+        ------------------------------
+        ts_fig: figure handle
+        ts_ax : axes handle
+
+        Returns
+        -------
+        None.
+
+        """
         self.ts_fig,self.ts_ax = plt.subplots()  
         self.ts_ax.set_title(f'{self.location}  {self.period_string}')
         self.ts_ax.set_xlabel('date time')
         self.ts_ax.set_ylabel ( f'Power Demand ({self.unit})')
         
         self.ts_ax.plot(self.y_actual_cleaned.index,
-                                                   self.y_actual_cleaned.values, 'k-')
-        self.ts_ax.plot(self.y_model_cleaned.index, self.y_model_cleaned.values, 'r:d')        
+                                           self.y_actual_cleaned.values, 'k-')
+        self.ts_ax.plot(self.y_model_cleaned.index,
+                                           self.y_model_cleaned.values, 'r:d')
+
+    def hist_compare_plot(self) :
+        """
+        Creates a plot with the histograms of y_actual and y_forecast
+
+        Uses Attributes:
+        ---------               
+        y_actual_cleaned
+        y_model_cleaned 
+        min_of_min
+        max_of_max
+        
+
+        Creates/Overwrites Attributes:
+        ------------------------------
+        hist_fig: figure handle
+        hist_ax : axes handle
+            
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        #make sure both histograms use the same bins
+        nrofpoints=self.data_metrics.loc['nr of valid actual points','value']        
+        if (nrofpoints<500):
+            nrofbins=10
+        else:
+            nrofbins=100
+            
+            
+        total_spread = self.max_of_max - self.min_of_min  
+        binwidth = total_spread / nrofbins
+            
+        bins= np.arange(self.min_of_min,self.max_of_max + binwidth, binwidth)   
+        
+        #define labels
+        self.hist_fig,self.hist_ax = plt.subplots()
+        self.hist_ax.set_title(f'{self.location}  {self.period_string}')
+        self.hist_ax.set_ylabel ( 'nr. of points per bin')
+        self.hist_ax.set_xlabel ( f'Power ({self.unit})')
+
+        self.hist_ax.hist(self.y_actual_cleaned,bins=bins,alpha=0.5, color='blue',
+                     label='actual ')
+        self.hist_ax.hist(self.y_model_cleaned,bins=bins,alpha=0.5, color='orange',
+                     label=self.model_name)
+        self.hist_ax.legend(loc='upper right')
+
+#plt.xticks(fontsize=35)
+#plt.yticks(fontsize=35)
+#plt.setp(hist_axs.spines.values(), linewidth=2)
+#hist_axs.xaxis.set_tick_params(width=2)
+#hist_axs.yaxis.set_tick_params(width=2)
+#hist_axs.tick_params(right=True, top=True)
         
 
 
