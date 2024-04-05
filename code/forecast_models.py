@@ -9,7 +9,7 @@ contains the classes:
 
 __author__     = "Jethro Betcke"
 __copyright__  = "Copyright 2024, Jethro Betcke"
-__version__    = "0.01"
+__version__    = "0.02"
 __maintainer__ = "Jethro Betcke"
 
 
@@ -32,8 +32,7 @@ import prepdata
 
 
 class NN_Model():
-    def __init__(self,x_data_train, y_data_train,
-                  hidden_nodes='mean_in_out', hidden_layers=1,
+    def __init__(self,x_columns, hidden_nodes='mean_in_out', hidden_layers=1,
                   activation4hidden='linear'):
         
         """
@@ -41,10 +40,11 @@ class NN_Model():
         
         Args:
         -------
-        x_data_train: pandas dataframe or pandas series
-            the independent, i.e. input, variables for training the model
-        y_data_df: pandas dataframe or pandas series
-            the dependent, i.e. output, variable for training the model  
+        x_columns, list or pandas column index
+            The names of the x variables in the model, is used to determine
+            the architecture of the network and to check training inputs 
+            for consistency
+       
             
         Keyword Args:
         -------------
@@ -68,26 +68,19 @@ class NN_Model():
         """
 
         
-        # make sure x and y data cover same period       
-        intersect_index = prepdata.force_df(x_data_train).index.intersection(
-                                                            y_data_train.index)
-        self.x_data_train_df  = prepdata.force_df(x_data_train).loc[
-                                                             intersect_index,:]
-        self.y_data_train_df  = prepdata.force_df(y_data_train).loc[
-                                                             intersect_index,:]
+
         #TODO test if common period is long enough
-        self.input_params = self.x_data_train_df.columns
+        self.input_params = list(x_columns)
         
         
         # set the NN model parameters
-        self.nr_in_nodes = len( self.x_data_train_df.columns )
+        self.nr_in_nodes = len( self.input_params )
         self.nr_out_nodes = 1 
         self.calculate_hidden_nodes(hidden_nodes)
         self.nr_hidden_layers = hidden_layers
         self.activation4hidden = activation4hidden
         
         self.define_model()
-        self.model_trained = False
         self.histories = []
         self.x_scaler = None
         self.y_scaler = None
@@ -165,7 +158,7 @@ class NN_Model():
         model, keras model
 
         """
-        nr_of_x_params = self.x_data_train_df.shape[1]
+        nr_of_x_params = len (self.input_params)
         
         self.model = keras.Sequential()
         self.model.add( keras.Input(shape=(nr_of_x_params,)) )
@@ -176,14 +169,25 @@ class NN_Model():
                                           kernel_initializer='he_uniform') )
         self.model.add( keras.layers.Dense(1, activation ="linear") )
                 
-      
+         
         
         
-    def train_model(self, learning_rate=0.01, epochs=100, batch_size=1000,
+    def train_model(self, x_train_df, y_train_df, x_val_df, y_val_df,
+                    learning_rate=0.01, epochs=100, batch_size=1000,
                      verbose=1):
         
         """
         Train the model 
+        
+        x_train_df: pandas dataframe or pandas series
+            the independent, i.e. input, variables for training the model
+        y_train_df: pandas dataframe or pandas series
+            the dependent, i.e. output, variable for training the model  
+            
+        x_val_df: pandas dataframe or pandas series
+                the independent, i.e. input, variables for validating the model
+        y_val_df: pandas dataframe or pandas series
+                the dependent, i.e. output, variable for validating the model      
         
         
         Keyword Args:
@@ -195,31 +199,48 @@ class NN_Model():
         2 is detailed
         """
         
-        #normalise the x_data
-        self.x_scaler = MinMaxScaler()
-        x_train_scaled = self.x_scaler.fit_transform(
-                             self.x_data_train_df.values)#.flatten()
+
         
         
-        self.y_scaler = MinMaxScaler()
-        y_train_scaled = self.y_scaler.fit_transform(
-                             self.y_data_train_df.values)
+        x_train_intersect, y_train_intersect=prepdata.intersect_df(x_train_df, 
+                                                                   y_train_df)
         
         
+        # first training, determine the scaling for x and y
+        if len(self.histories) == 0:
+            self.x_scaler = MinMaxScaler()
+            x_train_scaled = self.x_scaler.fit_transform(
+                                                      x_train_intersect.values)
+            self.y_scaler = MinMaxScaler()
+            y_train_scaled = self.y_scaler.fit_transform(
+                                                      y_train_intersect.values)   
+                  
+        #subsequent training, only apply the scaling.
+        else:
+            x_train_scaled = self.x_scaler.transform(x_train_intersect.values)
+            y_train_scaled = self.y_scaler.transform(y_train_intersect.values) 
+            
+        #intersect and scale the validation data    
+        x_val_intersect, y_val_intersect=prepdata.intersect_df(x_val_df, 
+                                                               y_val_df)   
+                
         
+        x_val_scaled = self.x_scaler.transform(x_val_intersect.values)
+        y_val_scaled = self.y_scaler.transform(y_val_intersect.values) 
+               
         
         self.model.compile(optimizer= Adam(learning_rate=learning_rate), 
-                      loss = "mean_squared_error" )
+                           loss = "mean_squared_error" )
         
         history = self.model.fit( x=x_train_scaled,    
                                   y=y_train_scaled, 
                                   epochs= epochs,
                                   batch_size= batch_size, 
-                                  validation_split= 0.0, 
+                                  validation_data=(x_val_scaled, y_val_scaled),
                                   verbose= verbose)
         self.histories = self.histories + [history]     
         
-        self.model_trained = True 
+ 
         
     def plot_history(self):
         """
@@ -282,15 +303,15 @@ class NN_Model():
 
         """
         # check if the model has been trained
-        if not self.model_trained:
+        if len(self.histories) == 0:
             raise Exception('Model has not been trained yet')
             
         # check if the given forecasted varaibles are the same as the
         # ones with which the model was trained with.
         
         if not ( list(self.input_params) == list(application_x.columns) ):
-            raise Exception('The parameters in the aplication data set differ'
-                            ' from the ones in the training data set')
+            raise Exception('The x parameters in the aplication data set'
+                            '  differ from the ones in the training data set')
         
         
             
