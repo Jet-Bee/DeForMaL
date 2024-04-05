@@ -302,7 +302,7 @@ def intersect_df(in_df1, in_df2):
     intersect_index = force_df(in_df1).index.intersection(
                                                         in_df2.index)
     
-    if np.sum(intersect_index) == 0:
+    if intersect_index.size == 0:
         raise Warning('No common datetime points between inputs')
         
     out_df1  = force_df(in_df1).loc[intersect_index,:]
