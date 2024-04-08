@@ -1072,6 +1072,17 @@ def prep_all_data(country_code, startdate, enddate,
     holiday_filename = f'{filenamebase}_holidays_by_type.pkl'    
     holiday_obj.pull_process_save('holidaytype', filename=holiday_filename)
     
+    #determine the bridgedays
+    ## first for the case the end of year period after christmas
+    ## should also be treated as bridgeday
+    bridgedays_df=bridgedays(holiday_obj.holiday_hr, xmas2NY_as_bridge=True)
+    bridgeday_filename = f'{filenamebase}_bridgedays_incl_yearend.pkl' 
+    bridgedays_df.to_pickle(bridgeday_filename) 
+    
+    bridgedays_df=bridgedays(holiday_obj.holiday_hr, xmas2NY_as_bridge=False)
+    bridgeday_filename = f'{filenamebase}_bridgedays_standard.pkl' 
+    bridgedays_df.to_pickle(bridgeday_filename)     
+    
     #create a different dataset with the holidays grouped by their name
     holiday_filename = f'{filenamebase}_holidays_by_name.pkl'    
     holiday_obj.json2df('holidayname')
