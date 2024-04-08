@@ -52,16 +52,17 @@ holidays:https://www.openholidaysapi.org/en/
 
 __author__     = "Jethro Betcke"
 __copyright__  = "Copyright 2024, Jethro Betcke"
-__version__    = "0.01"
+__version__    = "0.02"
 __maintainer__ = "Jethro Betcke"
 
 
 # TODO add class to pull weather data (openweather/ECMWF/ERA5)
 # TODO holidays: select only national holidays, or make an option for this
-# TODO holidays: workaround to deal with the maximum of 3 years of data 
-#                that can be pulled from openholidaysapi.org
-# TODO bridgedays: create category for days between holiday and weekend
 # TODO make structure and names of the different classes more similar
+#
+# DONE: workaround to deal with the maximum of 3 years of data 
+#                that can be pulled from openholidaysapi.org
+# DONE: bridgedays: create category for days between holiday and weekend
 
 import os
 import requests
@@ -705,12 +706,11 @@ class OpenHolidays:
    
         self.country_code = country_code
         self.time_zone = country_timezone[self.country_code]
-        self.startdate = startdate
-        self.enddate   = enddate
-         
         self.startdate_str = startdate
         self.enddate_str   = enddate
-        
+        self.startdate = pd.to_datetime(startdate)
+        self.enddate   = pd.to_datetime(enddate)
+               
         
     def pull_process_save(self,groupmethod, filename='../data/holidays.pkl'):
         """
@@ -768,27 +768,53 @@ class OpenHolidays:
         ----------
         response.json(): dict
             the requested holiday data in json format
-
-
         """
         
-        requestline = (f'https://openholidaysapi.org/{holidaytype}'
-                       'Holidays?'
-                       f'countryIsoCode={self.country_code}&' 
-                       'languageIsoCode=EN&'
-                       f'validFrom={self.startdate_str}&'
-                       f'validTo={self.enddate_str}')
         
         
-        response = requests.get(requestline)
-        
-        if response.status_code != 200:
-            raise Exception('Data request to openholidaysapi.org '
-                            f'failed with code {response.status_code}')
+        startyear = self.startdate.year
+        endyear   = self.enddate.year
         
         
+        nr_of_years= endyear-startyear+1
         
-        return response.json()
+        nr_of_requests=int(np.ceil(nr_of_years/3.0)) #max. 3 years per request
+        
+        holidays_json =[]
+        
+        
+        for i in range(nr_of_requests):
+            if i == 0:
+                request_startyear = startyear
+                request_startdate_str = self.startdate_str
+            else:
+                request_startyear = startyear + i*3
+                request_startdate_str = f'{request_startyear}-01-01'
+                
+            if i == (nr_of_requests - 1):
+                request_enddate_str = self.enddate_str
+            else:
+                request_endyear = request_startyear + 2
+                request_enddate_str = f'{request_endyear}-12-31'
+                       
+        
+            requestline = (f'https://openholidaysapi.org/{holidaytype}'
+                           'Holidays?'
+                           f'countryIsoCode={self.country_code}&' 
+                           'languageIsoCode=EN&'
+                           f'validFrom={request_startdate_str}&'
+                           f'validTo={request_enddate_str}')
+        
+        
+            response = requests.get(requestline)
+        
+            if response.status_code != 200:
+                raise Exception('Data request to openholidaysapi.org '
+                                f'failed with code {response.status_code}')
+        
+            holidays_json = holidays_json + response.json()
+        
+        return holidays_json
     
     
     def extract_holiday_names(self):
@@ -865,11 +891,9 @@ class OpenHolidays:
                 holiday_df.loc[holiday_start:holiday_end, holidayname]=1 
         else:
             raise Exception(f'unknown groupmethod {groupmethod}')
-                
-           
-                
+                               
         
-        #first bring  the dates from tz naive to local timezone
+        # bring  the dates from tz naive to local timezone
         
         self.holiday_day = holiday_df.tz_localize(self.time_zone)
         
@@ -904,6 +928,86 @@ class OpenHolidays:
         self.holiday_hr.drop(index=self.holiday_hr.index[-1],
                             axis=0,inplace=True)
         
+
+
+def bridgedays(holidaytype_df, xmas2NY_as_bridge=True):
+    """
+    Determines which days are bridgedays, i.e. the day between a public holiday
+    and the weekend. So bridgedays are either a Monday or a Friday. If a 
+    bridgeday is also a bankholiday it is not marked as a bridgeday.
+
+    Args.:
+    ----------
+    holidays_df : pandas dataframe with datetime index
+        has at least the column 'Public' 
+        where the values can be 0 or 1.
+        
+    Keyword Args:
+    -------------    
+        
+    xmas2NY_as_bridge : Boolean, default True
+        If True the period between Christmas and new year will be
+        put in the bridgeday category.
+
+    Returns
+    -------
+    bridgeday_df: pandas dataframe
+        contains the column 'Bridgeday' the value is 1 when it is a bridgeday
+        
+
+    """
+    
+    #get the weekdays (Monday=0, Sunday=6):
+
+    weekday_df = pd.DataFrame(holidaytype_df.index.dayofweek,
+                              index=holidaytype_df.index, 
+                              columns=['day of week'])
+    
+    #get the normal bridgedays
+    
+    monday_bridge_dt = holidaytype_df.index[
+                                     (holidaytype_df['Public'].values == 1) 
+                                 & (weekday_df['day of week'].values == 2 ) 
+                                        ]  - pd.to_timedelta('24h')
+    
+    friday_bridge_dt = holidaytype_df.index[
+                                     (holidaytype_df['Public'].values == 1) 
+                                 & (weekday_df['day of week'].values == 4 ) 
+                                        ]  + pd.to_timedelta('24h') 
+    
+    #remove bridgedays outside the original datetime range 
+    monday_bridge_dt=holidaytype_df.index.intersection( monday_bridge_dt)
+    friday_bridge_dt=holidaytype_df.index.intersection( friday_bridge_dt)
+    
+    bridgeday_df = pd.DataFrame( index=holidaytype_df.index, 
+                                 columns=['Bridgeday'])
+    
+    bridgeday_df.loc[:,'Bridgeday']= 0
+    bridgeday_df.loc[monday_bridge_dt,'Bridgeday'] = 1
+    bridgeday_df.loc[friday_bridge_dt,'Bridgeday'] = 1  
+    
+    #Note: Dec 26th is not a holiday in every country, so the 26th is choosen
+    # as the first day of the bridge period between christmas and new Year
+    # if it is a holiday it is removed as a bridgeday in the step below.
+    if xmas2NY_as_bridge:
+       bridge_mask = (bridgeday_df.index.month == 12) \
+                    & (bridgeday_df.index.day > 25)    \
+                        
+       bridgeday_df.loc[bridge_mask,'Bridgeday'] = 1     
+       #remove the weekend  in this period
+       weekend_mask = (weekday_df['day of week'].values == 5) \
+                     | (weekday_df['day of week'].values == 6)
+       bridgeday_df.loc[weekend_mask,'Bridgeday'] = 0             
+                     
+       
+   
+    #now remove the days that are already a public or bank holiday
+    already_holiday_mask =  (holidaytype_df['Public'] == 1)  \
+                          | (holidaytype_df['Bank'] == 1)    
+                          
+    bridgeday_df.loc[already_holiday_mask,'Bridgeday'] = 0                          
+    
+    return bridgeday_df
 
            
         
@@ -996,8 +1100,8 @@ def prep_all_data(country_code, startdate, enddate,
     
     ##now the version where Tuesday, wednesday and thursday are combined
     combiday_type_day = type_day(dt_index, combine_midweekdays=True)
-    typeday_filename  = f'{filenamebase}_combined_weekday_as_typeday.pkl' 
-    weekday_type_day.to_pickle(typeday_filename)    
+    combiday_filename  = f'{filenamebase}_combined_weekday_as_typeday.pkl' 
+    combiday_type_day.to_pickle(combiday_filename)    
      
     #get the daylight savingstimes flags
     for lag in range(7):
