@@ -65,12 +65,21 @@ __maintainer__ = "Jethro Betcke"
 # DONE: bridgedays: create category for days between holiday and weekend
 
 import os
+from os.path import splitext
 import requests
+import cdsapi
+from entsoe import EntsoePandasClient
 import pandas as pd
 import numpy as np
+import xarray as xr
 import time
 import pickle
-from entsoe import EntsoePandasClient
+import shutil
+
+
+
+
+
 
 
 
@@ -85,6 +94,20 @@ country_timezone={'AD':'Europe/Andorra',
                   'LU':'Europe/Luxembourg',
                   'LI':'Europe/Vaduz',
                   'MK':'Europe/Skopje'}
+
+
+# a square approximation of the country
+# with [northside, westside, southside, eastside]
+country_area={'AD':[42.6,1.45,42.45,1.75],
+              'CY':[35.35,32.35,34.85,34.05 ],
+              'IM':[54.40,-4.75, 54.05,-4.35],
+              'JE':[49.25,-2.25,49.15,-2.05],
+              'LU':[50, 5.75, 49.5, 6.3],
+              'LI':[47.25,9.50,47.05,9.60],
+              'MK':[42.20,20.55,41.10,22.95 ]
+             }
+
+
 
 # HELPER FUNCTIONS AND UTILITIES
 
@@ -1024,6 +1047,117 @@ class ERA5Weather:
         pass
     
     
+    def weather_ds2df(batch_filename):
+        """
+        
+        loads the netcdf file in an xarray dataset
+        
+        - calculates the windspeed
+        - calculates the spatial average
+        - convert to pandas dataframe
+              
+
+        Parameters
+        ----------
+        batch_filename : string
+            filename to be loaded
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        weather_ds = xr.open_dataset(batch_filename)
+        
+        print(weather_ds.variables)
+        
+        #calculate the magnitude of the windspeed
+        
+        if 'u10' in weather_ds and 'v10' in weather_ds:
+            windspeed = np.sqrt(weather_ds['u10']**2 + weather_ds['v10']**2)
+            weather_ds['windspeed'] = windspeed    
+            # Remove windspeed components 'u' and 'v'  from the dataset
+            weather_ds = weather_ds.drop_vars(['u10', 'v10'])
+        
+        else:
+            raise Warning('cannot calculate magnitude of windspeed'
+                          '"u" and/or "v" are missing')
+            
+        spat_avg_weather_ds = weather_ds.mean(dim=['latitude', 'longitude'])   
+        
+        weather_df = spat_avg_weather_ds.to_dataframe()
+        
+        return weather_df
+    
+    
+    def adjust_ERA5_time(weather_df, timezone):
+        """
+        adjusts the timestamps of the weather data to be consistent with 
+        the ENTSOE data and converts to local time.
+        
+        The timestamp of the ENTSOE data indicates the start of the averaging 
+        period.
+        For the ERA5 irradiance data the timestamp indicates the end of the 
+        averaging period. So this data needs to be shifted.
+        For the other ERA5 data the timestamp indicated a momenteneous value,
+        i.e a snapshot value at a particular timepoint. For these quantities  
+        the average over the hour will be approximated by averaging the values of 
+        two adjecent time points
+        
+
+        Parameters
+        ----------
+        weather_df : pandas dataframe 
+            contains the ERA5 weather data with the original UTC timestamps
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        #create new datetime_index for the data 
+        ## from naive to UTC and correct for different timestamp convention
+        ## between ERA5 and ENTSOE data
+        new_index = weather_df.index.tz_localize('UTC')-pd.to_timedelta('1H')
+        
+        #convert to local timezone
+        if timezone != None:
+            new_index = new_index.tz_convert(timezone)
+        
+        
+        weather_df_out = pd.DataFrame(index=new_index, columns=weather_df.columns)
+        
+        #the irradiance data is a temporal average so can just be copied
+        weather_df_out['ssrd'] = weather_df['ssrd'].values
+        
+       
+        # all other variables are snapshots, a temporal average is approximated
+        # by averaging the value at start of hour and end of hour.
+        snapshot_vars = list(weather_df_out.columns)
+        snapshot_vars.remove('ssrd')
+        
+        print('snpashot_vars:', snapshot_vars)
+        
+        #get integer indexes of snapshot_vars
+        snsh_var_index = [weather_df.columns.get_loc(var) for var in snapshot_vars]
+        
+        
+        
+           
+            
+        weather_df_out.iloc[0:-1,snsh_var_index] =  (   
+                               weather_df.iloc[0:-1,snsh_var_index].values  
+                             + weather_df.iloc[1:,snsh_var_index].values    ) / 2.0
+         
+          #for last point in the timeseries it is not possible to average.  
+        weather_df_out.iloc[-1,snsh_var_index] = weather_df.iloc[-1,snsh_var_index
+                                                                           ].values
+        
+        return weather_df_out
+    
+    
 def prep_all_data(country_code, startdate, enddate, 
             resultdir='../data/', loginfile='../userdata/logins.txt' ):
     """
@@ -1123,8 +1257,445 @@ def prep_all_data(country_code, startdate, enddate,
 
 
 
+class ERA5_Weather():
+    """
+    Class to retrieve and process meteorological data from the ERA5-Land 
+    re-analysis dataset 
+    
+    How to use: generate a ERA5_object (see __init__)
+    and apply the desired method(s)
+    
+    
+    contains the following methods:
+    --------------------------
+    __init__ 
+        intialisation of the object
+    request_process_save:
+         a single method to retrieve the data, process it and save it to
+         a pickled dataframe. 
+    request_ERA5:
+        Splits the requested timeperiod in smaller timeperiods so they are
+        small enough for the the ECMWF/Copernicus server,
+        calls single_request for de individual requests
+        ands saves the results in a series of files
+    single_request:
+        sends a single request to the ECMWF/Copernicus server
+        and saves the result to file     
+    multi_weatherfile2df:
+        reads the weather data from the series of files
+        and combines their content to a pandas dataframe 
+    single_weatherfile2df:
+        reads a single weatherfile converts it to a pandas dataframe    
+    adjust_ERA5_time:
+        converts the UTC time of the original ERA5 data to local time and
+        adjust the timestamps of the weather dataframe so they becom
+        consistent with the ENTSOE data.
+    
+    """
+    
+    def __init__(self, startdate, enddate, location, 
+                 datafilebasename = '../data/ERA5_weather',
+                 variables=['10m_u_component_of_wind', 
+                            '10m_v_component_of_wind', 
+                             '2m_temperature',
+                             'surface_solar_radiation_downwards'],
+                              loginfile='../userdata/logins.txt'):
+        """
+        Args:
+        ------------
+        startdate: string
+            first date of the required period in the format 'YYYY-MM-DD'
+        endtdate: string
+            last tdate of the required period in the format 'YYYY-MM-DD'
+        location: string
+            two letter country code as used in 
+            country_timezone and country_area
+           
+        
+        Keyword Args:
+        -------------
+        datafilebasename: string, default = '../data/ERA5_weather'
+            will be used to generate names for intermediate files and
+            and the filename for the final result
+        variables: list of string, default:
+                                        ['10m_u_component_of_wind', 
+                                         '10m_v_component_of_wind', 
+                                         '2m_temperature',
+                                         'surface_solar_radiation_downwards'],
+        loginfile: string, default: '../userdata/logins.txt'
+            file with the api access key
+        """
+        #read the login data
+        #get the range
+        
+        self.startdate = startdate
+        self.enddate   = enddate
+        self.location  = location
+        self.datafilebasename   = datafilebasename
+        self.area = country_area[location]
+        self.country_timezone = country_timezone[location]
+        self.loginfile = loginfile
+        self.variables = variables
+        
+        self.csdapi_key=read_login(self.loginfile,'ecmwf')
+        self.csdapi_url='https://cds.climate.copernicus.eu/api/v2'
+        
+    
+    def request_process_save(self, outfilename=None,
+                             variables=['10m_u_component_of_wind', 
+                                        '10m_v_component_of_wind', 
+                                        '2m_temperature',
+                                        'surface_solar_radiation_downwards']):
+        """
+        requests the weatherdata, processes it and saves it.
+        
+        Keyword Args:
+        -------------    
+        outfilename, string or None, default None
+            name for the pickle file where the resulting dataframe is stored in
+            if None it will be based on the basename given when initialising
+            the ERa5 object
+        variables: list of strings, default: ['10m_u_component_of_wind', 
+                                           '10m_v_component_of_wind', 
+                                           '2m_temperature',
+                                           'surface_solar_radiation_downwards']
+            names or the variables to be retrieved, as defined by the csd_api
+            (see: https://cds.climate.copernicus.eu/cdsapp#!/dataset/
+             reanalysis-era5-land?tab=overview, make the variable name lower
+             score and replace spaces with underscores)
 
 
+        Returns
+        -------
+        None.
+        
+        File output:
+        ..............
+        
+        pickle file with the hourly weather data as pandas dataframe
+        
+        """
+        
+        if outfilename == None:
+            outfilename = f'{self.datafilebasename}.pk'
+        
+        
+        batch_filenames = self.request_ERA5()
+        weather_df = self.multi_weatherfile2df(batch_filenames)
+        weather_df = self.adjust_ERA5_time(weather_df, self.country_timezone)
+        weather_df.to_pickle(outfilename)
+        
+    
+    def request_ERA5(self):
+        """
+        Main method to request era 5 data
+        
+        request  the ERa5 weather data 
+        from the ECWMF/Copernicus server in batches.
+        the ecwmf/copernicus api can handle only 12000 datapoints per request
+        so this method split the requests in multiple requests 
+        
+        To save time the batch requests are send out to the server in parallel
+        using the async library.
+
+        Returns
+        -------
+        batch_filenames: list of strings
+            list with the filenames of the zipped netcdf files containing
+            the netcdf data
+
+        """
+        #starttime=time.time()
+        #print('starttime: ',starttime)   
+            
+        max_per_batch=12000  #maximum number of data points per api request
+        
+        #ERA5 data is UTC, but the endgoal is local datetime, 
+        # so adding a day at start and end will allow for having complete
+        # days at start and end in the local time. Furthermore,
+        # we need an additional hour at the end to average "snapshot" data
+        #into hourly averages
+        request_startdate = pd.to_datetime(self.startdate) - pd.to_timedelta('1D')
+        request_enddate = pd.to_datetime(self.enddate) + pd.to_timedelta('1D')
+        
+        startyear = request_startdate.year
+        startmonth = request_startdate.month
+        startday = request_startdate.day
+        
+        endyear =request_enddate.year
+        endmonth = request_enddate.month
+        endday = request_enddate.day        
+        
+        
+        filename_body, filename_ext= splitext(self.datafilebasename)
+                        
+        nrofvariables=len(self.variables)
+        
+        pointspermonth=nrofvariables*31*24
+                
+        batchnr=0
+        batch_filenames=[]
+        
+        if pointspermonth > max_per_batch:
+            raise Exception('Too much points per month')
+        else:
+            #quick and dirty solution: one calendar month per batch
+            for year in range(startyear,endyear+1):
+                if year==startyear:
+                    firstmonth = startmonth
+                else: 
+                    firstmonth = 1   
+                    
+                if year == endyear:
+                    lastmonth = endmonth
+                else:
+                    lastmonth = 12
+                    
+                for month in range(firstmonth, lastmonth+1):
+                    if year==startyear & month == startmonth:
+                        firstday = startday
+                    else: 
+                        firstday =1
+                    if year==endyear & month == endmonth:
+                        lastday = endday
+                    else: 
+                        lastday =31 # MARS server truncates the month at
+                                    # real length automatically
+                                    
+                                    
+                    requestdays=[f'{i:02}' for i in range(firstday,lastday+1)]                
+                    
+                    batchnr+=1                                    
+                                  
+                    batch_filename = (f'{filename_body}_batch_' 
+                                      f'{batchnr:0>{3}}'
+                                      '.zip')
+                    
+                    batch_filenames=batch_filenames+[batch_filename]
+                    
+                                    
+                    self.single_request( str(year), 
+                                         '{:02}'.format(month),requestdays,
+                                          self.area, self.variables,
+                                          batch_filename )
+            #endtime=time.time()
+
+            return batch_filenames            
+  
+    
+    
+    def single_request(self, year, months,days, area, variables, outfilename ):
+        """
+        helper method to request_ERA5, but can also be run as
+        stand allone method
+        creates a single request and pass in to the ECMWF MARS server
+        
+        can also be used by the user to create a request "by hand"
+        but in that case they should be aware of the maximum of 12000 data
+        points per request, and the pecularities of the cdsapi interface
+        
+        Args:
+        -----
+        year: int or string
+            year for which data is requested
+        months: string or list of strings
+            number of the month or the months for which data is requested, 
+            single digit months must have a leading zero
+        days: list of strings
+            numbers of the days in the months for which data is requested
+            single digit days must have a leading zero
+            "overshooting" the day numbers is not a problem,
+            the server ignores day numbers that are longer than the 
+            length of the months, for example February 30 is not a problem.
+        outfilename: string
+            path and name of the resulting zipped netcdf file
+        
+        
+        FILE OUPUT:
+        zipped netcdf file containing the retrieved data
+        
+        """
+        
+        print(f'*** requesting {year} {months} ****')
+        cds_obj = cdsapi.Client(key=self.csdapi_key,url=self.csdapi_url)
+
+        cds_obj.retrieve(
+            'reanalysis-era5-land',
+            {
+                'variable': variables,
+                'year':str( year),
+                'month': months,
+                'time': [f'{i:02}:00' for i in range(0,24)],
+                'day': days,
+                'area': area,
+                'format': 'netcdf.zip',
+            },
+            outfilename)
+
+
+
+    def multi_weatherfile2df(self,batch_filenames) :
+        """
+        reads a series of zipped netcdf ERA5 files that contains spatially
+        gridded timeseries of weather data.
+        Their content is processed (see the method single_weatherfile2df)
+        and combined to a single pandas dataframe
+        
+
+        Args
+        ----------
+        batch_filenames : list of strings
+            List of the filenames that needs to be processed
+
+        Returns
+        -------
+        df_out
+
+        """
+        
+        nrof_files =len(batch_filenames)
+        df_list=nrof_files *[None]   
+                
+        for i,batch_filename in enumerate(batch_filenames):
+            df_list[i]= self.single_weatherfile2df(batch_filename)
+                        
+        df_out=pd.concat (df_list)        
+        
+        return df_out
+                
+
+    def single_weatherfile2df(self,batch_filename):
+        """
+        
+        Loads a single zipped netcdf file containing spatially gridded
+        ERA5 reanalysis weather data and consequently:
+        
+        - calculates the total windspeed from the directional components,
+          when these directional components are present in the file
+        - calculates the hourly solar irradiation  (ssrd) from the cummulative 
+          irradiation, when the cummulative ssrd is present in the file
+        - calculates the spatial average for all variables
+        - converts the data to a pandas dataframe
+              
+    
+        Args:
+        ----------
+        batch_filename : string
+            filename to be loaded
+    
+        Returns
+        -------
+        weather_df: pandas dataframe with UTC datetime index
+            contains the integrated weather data
+    
+        """
+        #unzip file to working directory
+        
+        shutil.unpack_archive(batch_filename)
+                
+        #TODO extract to special temp dir
+        #the zip file contains the file data.nc
+        weather_ds = xr.open_dataset('./data.nc')
+        
+        #TODO delete data.nc
+        
+        
+        #calculate the magnitude of the windspeed
+        # non linear so must be done before averaging
+        if 'u10' in weather_ds and 'v10' in weather_ds:
+            windspeed = np.sqrt(weather_ds['u10']**2 + weather_ds['v10']**2)
+            weather_ds['windspeed'] = windspeed    
+            # Remove windspeed components 'u' and 'v'  from the dataset
+            weather_ds = weather_ds.drop_vars(['u10', 'v10'])
+        
+        else:
+            raise Warning('cannot calculate magnitude of windspeed'
+                          '"u" and/or "v" are missing')
+                        
+        spat_avg_weather_ds = weather_ds.mean(dim=['latitude', 'longitude'])        
+
+        weather_df = spat_avg_weather_ds.to_dataframe()
+        
+        #convert cummulative ssrd to hourly values. 
+        # is linear process so can be done after averaging
+        
+        if 'ssrd' in weather_ds:
+            ssrd_hrly = np.zeros(weather_df['ssrd'].shape)            
+            ssrd_hrly[1:] = weather_df['ssrd'].values[1:] \
+                                             - weather_df['ssrd'].values[0:-1]
+            #otherwise negative values at 01:00 UTC:                                 
+            ssrd_hrly[ssrd_hrly <0 ] = 0.0
+            weather_df['ssrd'] = ssrd_hrly
+        else:
+            raise Warning('ssrd (solar irradiation) not present in dataset')    
+        
+        return weather_df
+        
+
+    def adjust_ERA5_time(self,weather_df, timezone):
+        """
+        adjusts the timestamps of the weather data to be consistent with 
+        the ENTSOE data and converts to local time.
+                
+        The timestamp of the ENTSOE data indicates the start of the averaging 
+        period.
+        For the ERA5 irradiation data the timestamp indicates the end of the 
+        averaging period. So this data needs to be shifted one hour.
+        For the other ERA5 data the timestamp indicated a momenteneous value,
+        i.e a snapshot value at a particular timepoint. For these quantities  
+        the average over the hour will be approximated by averaging the values of 
+        two adjecent time points.
+        
+    
+        Args
+        ----------
+        weather_df : pandas dataframe 
+            contains the ERA5 weather data with the original UTC timestamps
+        timezone: string or None
+            if None, the timestamps will remain in UTC
+            the timezone should be given according to pandas standards
+    
+        Returns
+        -------
+        weather_df_out: pandas dataframe
+            contains the ERA5 weather data with adjusted timestamps.
+    
+        """
+        
+        #create new datetime_index for the data 
+        ## from naive to UTC and correct for different timestamp convention
+        ## between ERA5 and ENTSOE data
+        new_index = weather_df.index.tz_localize('UTC')-pd.to_timedelta('1h')
+        
+        #convert to local timezone
+        if timezone != None:
+            new_index = new_index.tz_convert(timezone)
+        
+        
+        weather_df_out = pd.DataFrame(index=new_index, columns=weather_df.columns)
+        
+        #the irradiance data is a temporal average so can just be copied
+        weather_df_out['ssrd'] = weather_df['ssrd'].values
+        
+       
+        # all other variables are snapshots, a temporal average is approximated
+        # by averaging the value at start of hour and end of hour.
+        snapshot_vars = list(weather_df_out.columns)
+        snapshot_vars.remove('ssrd')
+        
+        
+        #get integer indexes of snapshot_vars
+        snsh_var_index = [weather_df.columns.get_loc(var) for var in snapshot_vars]
+                   
+        weather_df_out.iloc[0:-1,snsh_var_index] =  (   
+                               weather_df.iloc[0:-1,snsh_var_index].values  
+                             + weather_df.iloc[1:,snsh_var_index].values    ) / 2.0
+         
+          #for last point in the timeseries it is not possible to average.  
+        weather_df_out.iloc[-1,snsh_var_index] = weather_df.iloc[-1,snsh_var_index
+                                                                           ].values
+        
+        return weather_df_out
 
 
 
