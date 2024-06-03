@@ -1590,12 +1590,12 @@ class ERA5_Weather():
     
         """
         #unzip file to working directory
+        extractdir='../tempdata/'
         
-        shutil.unpack_archive(batch_filename)
+        shutil.unpack_archive(batch_filename,extractdir)
                 
-        #TODO extract to special temp dir
-        #the zip file contains the file data.nc
-        weather_ds = xr.open_dataset('./data.nc')
+        print(f'{extractdir}/data.nc')
+        weather_ds = xr.open_dataset(f'{extractdir}/data.nc')
         
         #TODO delete data.nc
         
