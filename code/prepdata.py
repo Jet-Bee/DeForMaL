@@ -1034,128 +1034,6 @@ def bridgedays(holidaytype_df, xmas2NY_as_bridge=True):
 
            
         
-
-
-class ERA5Weather:
-    """
-    class to obtain the ECMWF ERA5 reanalysis weather data
-    """    
-
-    def init (startdatetime,enddatetime,lat,lon, 
-                   loginfile='../userdata/logins.txt'):
-
-        pass
-    
-    
-    def weather_ds2df(batch_filename):
-        """
-        
-        loads the netcdf file in an xarray dataset
-        
-        - calculates the windspeed
-        - calculates the spatial average
-        - convert to pandas dataframe
-              
-
-        Parameters
-        ----------
-        batch_filename : string
-            filename to be loaded
-
-        Returns
-        -------
-        None.
-
-        """
-        
-        weather_ds = xr.open_dataset(batch_filename)
-        
-        print(weather_ds.variables)
-        
-        #calculate the magnitude of the windspeed
-        
-        if 'u10' in weather_ds and 'v10' in weather_ds:
-            windspeed = np.sqrt(weather_ds['u10']**2 + weather_ds['v10']**2)
-            weather_ds['windspeed'] = windspeed    
-            # Remove windspeed components 'u' and 'v'  from the dataset
-            weather_ds = weather_ds.drop_vars(['u10', 'v10'])
-        
-        else:
-            raise Warning('cannot calculate magnitude of windspeed'
-                          '"u" and/or "v" are missing')
-            
-        spat_avg_weather_ds = weather_ds.mean(dim=['latitude', 'longitude'])   
-        
-        weather_df = spat_avg_weather_ds.to_dataframe()
-        
-        return weather_df
-    
-    
-    def adjust_ERA5_time(weather_df, timezone):
-        """
-        adjusts the timestamps of the weather data to be consistent with 
-        the ENTSOE data and converts to local time.
-        
-        The timestamp of the ENTSOE data indicates the start of the averaging 
-        period.
-        For the ERA5 irradiance data the timestamp indicates the end of the 
-        averaging period. So this data needs to be shifted.
-        For the other ERA5 data the timestamp indicated a momenteneous value,
-        i.e a snapshot value at a particular timepoint. For these quantities  
-        the average over the hour will be approximated by averaging the values of 
-        two adjecent time points
-        
-
-        Parameters
-        ----------
-        weather_df : pandas dataframe 
-            contains the ERA5 weather data with the original UTC timestamps
-
-        Returns
-        -------
-        None.
-
-        """
-        
-        #create new datetime_index for the data 
-        ## from naive to UTC and correct for different timestamp convention
-        ## between ERA5 and ENTSOE data
-        new_index = weather_df.index.tz_localize('UTC')-pd.to_timedelta('1H')
-        
-        #convert to local timezone
-        if timezone != None:
-            new_index = new_index.tz_convert(timezone)
-        
-        
-        weather_df_out = pd.DataFrame(index=new_index, columns=weather_df.columns)
-        
-        #the irradiance data is a temporal average so can just be copied
-        weather_df_out['ssrd'] = weather_df['ssrd'].values
-        
-       
-        # all other variables are snapshots, a temporal average is approximated
-        # by averaging the value at start of hour and end of hour.
-        snapshot_vars = list(weather_df_out.columns)
-        snapshot_vars.remove('ssrd')
-        
-        print('snpashot_vars:', snapshot_vars)
-        
-        #get integer indexes of snapshot_vars
-        snsh_var_index = [weather_df.columns.get_loc(var) for var in snapshot_vars]
-        
-        
-        
-           
-            
-        weather_df_out.iloc[0:-1,snsh_var_index] =  (   
-                               weather_df.iloc[0:-1,snsh_var_index].values  
-                             + weather_df.iloc[1:,snsh_var_index].values    ) / 2.0
-         
-          #for last point in the timeseries it is not possible to average.  
-        weather_df_out.iloc[-1,snsh_var_index] = weather_df.iloc[-1,snsh_var_index
-                                                                           ].values
-        
-        return weather_df_out
     
     
 def prep_all_data(country_code, startdate, enddate, 
@@ -1594,7 +1472,7 @@ class ERA5_Weather():
         
         shutil.unpack_archive(batch_filename,extractdir)
                 
-        print(f'{extractdir}/data.nc')
+       # print(f'{extractdir}/data.nc')
         weather_ds = xr.open_dataset(f'{extractdir}/data.nc')
         
         #TODO delete data.nc
