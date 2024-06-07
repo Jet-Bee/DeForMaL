@@ -115,8 +115,8 @@ country_area={'AD':[42.6,1.45,42.45,1.75],
 def one_hot_df(categorical_df, column_prefix=''):
     """
     Applies one hot encoding to a pandas dataframe.
-    The motivation to notus keras'to_categorical() is that we want to 
-    preserve the category names. Which makes it easier to reuse the model
+    The motivation no to use keras 'to_categorical()' is that we want to 
+    preserve the category names. This makes it easier to reuse the model
     
     Args:
     ------------
@@ -539,6 +539,22 @@ class EntsoePower:
     European Network of Transmission System Operators for Electricity
     (ENTSO-E: https://transparency.entsoe.eu)
     
+    Methods:
+    -------------     
+    __init__: 
+        defines an EntsoePower object
+    pull_process_save: 
+        pulls actual and forecasted power demanddata from 
+        the EntSoe server, averages it to hourly data and saves forecast and 
+        actual data as seperate pickled dataframes
+        
+    pull_all: 
+        pulls actual and forecaste powerdemanddata from the EntSoe server
+    to_hourly: 
+        converts the original 15 minute data to hourly data
+    split:
+        split the actual and forecasted data in seperate dataframes.
+   
     """
     
     def __init__(self, country_code, startdate, enddate, 
@@ -575,33 +591,33 @@ class EntsoePower:
         self.time_zone     = country_timezone[self.country_code]
         
     def pull_process_save(self,filename):
-            """
-            one stop shop to:
-                - pull the 15 minute data from the API
-                - average it to 1h resolution
-                - split the data in forecast and actual
-                - save the results to csv
-                
-            File Output:
-            ------------
-            <filename>: 
-                csv file with hourly forecasted and actual load
-            <filenamebase>_forecast<extension>: 
-                csv file with only the hourly forecasted load
-            <filenamebase>_actual<extension>: 
-                csv file with only the hourly actual load                
-                                               
+        """
+        one stop shop to:
+            - pull the 15 minute data from the API
+            - average it to 1h resolution
+            - split the data in forecast and actual
+            - save the results to csv
             
-            """
-            self.pull_all()
-            self.to_hourly()
-            self.data_hr.to_pickle(filename)
-               
-            self.split()
-            
-            filebase,extension = os.path.splitext(filename)
-            self.forecasted_load_hr.to_pickle(f'{filebase}_forecast{extension}')
-            self.actual_load_hr.to_pickle(f'{filebase}_actual{extension}')  
+        File Output:
+        ------------
+        <filename>: 
+            csv file with hourly forecasted and actual load
+        <filenamebase>_forecast<extension>: 
+            csv file with only the hourly forecasted load
+        <filenamebase>_actual<extension>: 
+            csv file with only the hourly actual load                
+                                           
+        
+        """
+        self.pull_all()
+        self.to_hourly()
+        self.data_hr.to_pickle(filename)
+           
+        self.split()
+        
+        filebase,extension = os.path.splitext(filename)
+        self.forecasted_load_hr.to_pickle(f'{filebase}_forecast{extension}')
+        self.actual_load_hr.to_pickle(f'{filebase}_actual{extension}')  
             
                           
     
@@ -779,9 +795,7 @@ class OpenHolidays:
     
     
     def pull_holidays(self,holidaytype):
-        """
-        
-
+        """        
         Args
         ----------
         holidaytype : string
@@ -792,15 +806,12 @@ class OpenHolidays:
         response.json(): dict
             the requested holiday data in json format
         """
-        
-        
-        
+                      
         startyear = self.startdate.year
         endyear   = self.enddate.year
         
         
-        nr_of_years= endyear-startyear+1
-        
+        nr_of_years= endyear-startyear+1        
         nr_of_requests=int(np.ceil(nr_of_years/3.0)) #max. 3 years per request
         
         holidays_json =[]
@@ -850,7 +861,6 @@ class OpenHolidays:
         
         list of the unique names of the holidays,
         sorted alphabetically
-
         """
     
         raw_name_lst=[holiday['name'][0]['text'] \
@@ -877,15 +887,12 @@ class OpenHolidays:
               bank holidays, public holidays and school holidays    
             - when value is 'holidayname' each holiday will have its own 
               category
-              
-        
         """
-               
-        
+                       
         start_date4_df = pd.to_datetime(self.startdate_str, yearfirst=True)
         end_date4_df   = pd.to_datetime(self.enddate_str, yearfirst=True)
         
-        
+       
         # by setting inclusive to left 0:00 of the next day is excluded
         # form the timeseries
         #dt_index=pd.date_range(start=start_date4_df, end=end_date4_df, 
@@ -927,8 +934,7 @@ class OpenHolidays:
         
         Returns
         -------
-        None.
-
+        None
         """
         resolution = 'h'        
         
@@ -977,7 +983,6 @@ def bridgedays(holidaytype_df, xmas2NY_as_bridge=True):
     bridgeday_df: pandas dataframe
         contains the column 'Bridgeday' the value is 1 when it is a bridgeday
         
-
     """
     
     #get the weekdays (Monday=0, Sunday=6):
@@ -1033,8 +1038,7 @@ def bridgedays(holidaytype_df, xmas2NY_as_bridge=True):
     return bridgeday_df
 
            
-        
-    
+           
     
 def prep_all_data(country_code, startdate, enddate, 
             resultdir='../data/', loginfile='../userdata/logins.txt' ):
@@ -1059,7 +1063,7 @@ def prep_all_data(country_code, startdate, enddate,
 
     Returns
     -------
-    None.
+    None
                 
     
     File output
