@@ -1,0 +1,1 @@
+This folder/directory is meant for temporary data. 
